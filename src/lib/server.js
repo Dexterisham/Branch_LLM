@@ -1,49 +1,31 @@
 import express from 'express';
 import cors from 'cors';
 import { ChatOllama } from "@langchain/community/chat_models/ollama";
-import { ConversationChain } from "langchain/chains";
 import { BufferMemory } from "langchain/memory";
+import { ConversationChain } from "langchain/chains";
 
-const app = express();
+const app=express();
+
 app.use(cors());
 app.use(express.json());
 
-// Initialize chat components
-const memory = new BufferMemory({
-    returnMessages: true,
-    memoryKey: "chat_history"
-});
 
-const llm = new ChatOllama({
-    model: "mistral",
-    baseUrl: "http://localhost:11434"
-});
+let memory = new BufferMemory({
+returnMessages=true,
+memoryKey:'chatHistory'
 
-const chain = new ConversationChain({ llm, memory });
+})
+ let model ="mistral"
 
-// Chat endpoint
-app.post("/api/generate", async (req, res) => {
-    try {
-        const { message } = req.body;
-        if (!message) {
-            return res.status(400).json({ error: "Message is required" });
-        }
+ let llm= new ChatOllama({
 
-        const result = await chain.call({ input: message });
-        res.json({ response: result.response });
-    } catch (error) {
-        console.error("Error processing chat:", error);
-        res.status(500).json({ error: "Failed to process chat" });
-    }
-});
+  model: model,
+  baseUrl:"https://localhost:11434"
+ })
 
-// Health check endpoint
-app.get("/health", (req, res) => {
-    res.json({ status: "ok" });
-});
+ let chain= new ConversationChain({
 
-const PORT = 3001;
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log("Make sure Ollama is running on http://localhost:11434");
-}); 
+  llm,
+  memory,
+  verbose=true
+ });
