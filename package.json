@@ -17,12 +17,14 @@
 		"vite": "^6.2.5"
 	},
 	"dependencies": {
-		"@langchain/community": "^0.3.41",
+		"@langchain/community": "^0.3.42",
+		"@langchain/core": "^0.3.55",
 		"@langchain/google-genai": "^0.2.4",
 		"@microsoft/fetch-event-source": "^2.0.1",
 		"cors": "^2.8.5",
 		"dotenv": "^16.5.0",
 		"express": "^5.1.0",
-		"langchain": "^0.3.22"
+		"langchain": "^0.3.25",
+		"uuid": "^11.1.0"
 	}
 }

@@ -2,244 +2,183 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
     import { v4 as uuidv4 } from 'uuid';
+    import { createBranch, sendMessage, getBranchHistory } from '../services/api';
     
     // Props for component
-    export let branchId = uuidv4(); // Each chat component gets a unique ID
-    export let parentBranchId = null; // For branching from existing conversations
+    export let id;
+    export let position = { x: 0, y: 0 };
+    export let parentId = null;
     
     // Component state
     let messages = [];
-    let userInput = "";
+    let inputMessage = "";
     let isLoading = false;
-    let branchName = `Branch ${branchId.slice(0, 4)}`;
+    let branchName = `Branch ${id.slice(0, 4)}`;
     
-    // API functions for LangChain interaction
-    async function createBranch() {
+    // Initialize component
+    onMount(async () => {
       try {
-        const response = await fetch('/api/branch/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ branch_id: branchId, parent_branch_id: parentBranchId })
-        });
+        // Create new branch
+        await createBranch(id, parentId);
         
-        if (!response.ok) throw new Error('Failed to create branch');
-        
-        // If this is a child branch, load parent history
-        if (parentBranchId) {
-          await loadBranchHistory();
+        // Load history if this is a child branch
+        if (parentId) {
+          const history = await getBranchHistory(id);
+          if (history.success) {
+            messages = history.history;
+          }
         }
       } catch (error) {
-        console.error('Error creating branch:', error);
+        console.error('Error initializing chat:', error);
       }
-    }
+    });
     
-    async function loadBranchHistory() {
-      try {
-        const response = await fetch(`/api/branch/${branchId}/history`);
-        if (!response.ok) throw new Error('Failed to load history');
-        
-        const data = await response.json();
-        messages = data.history || [];
-      } catch (error) {
-        console.error('Error loading history:', error);
-      }
-    }
-    
-    async function sendMessage() {
-      if (!userInput.trim()) return;
+    async function handleSubmit() {
+      if (!inputMessage.trim()) return;
       
-      const userMessage = userInput;
-      userInput = ""; // Clear input
-      
-      // Add user message to UI immediately
-      messages = [...messages, { role: 'user', content: userMessage }];
       isLoading = true;
-      
       try {
-        const response = await fetch('/api/branch/message', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: userMessage, branch_id: branchId })
-        });
+        // Add user message to UI
+        messages = [...messages, { role: 'user', content: inputMessage }];
         
-        if (!response.ok) throw new Error('Failed to send message');
+        // Send to server
+        const response = await sendMessage(id, inputMessage);
         
-        const data = await response.json();
-        
-        // Add AI response to messages
-        messages = [...messages, { role: 'assistant', content: data.response }];
+        if (response.success) {
+          // Add AI response to UI
+          messages = [...messages, { role: 'assistant', content: response.response }];
+        }
       } catch (error) {
         console.error('Error sending message:', error);
-        messages = [...messages, { role: 'system', content: 'Error: Could not get response' }];
       } finally {
         isLoading = false;
+        inputMessage = '';
       }
     }
     
     function createNewBranch() {
       // Dispatch event to parent component to create new branched chat
       const event = new CustomEvent('createBranch', {
-        detail: { parentBranchId: branchId }
+        detail: { parentBranchId: id }
       });
       document.dispatchEvent(event);
     }
-    
-    // Initialize component
-    onMount(async () => {
-      await createBranch();
-    });
   </script>
   
-  <div class="chat-box">
+  <div class="chat-container" style="left: {position.x}px; top: {position.y}px;">
     <div class="chat-header">
-      <input 
-        bind:value={branchName}
-        class="branch-name-input"
-        placeholder="Branch name"
-      />
+      <h3>Chat {id}</h3>
+      {#if parentId}
+        <span class="parent-info">Branch from {parentId}</span>
+      {/if}
       <button class="branch-btn" on:click={createNewBranch}>
         Branch
       </button>
     </div>
     
-    <div class="messages-container">
+    <div class="messages">
       {#each messages as message}
         <div class="message {message.role}">
-          <div class="message-content">{message.content}</div>
+          {message.content}
         </div>
       {/each}
       
       {#if isLoading}
-        <div class="loading-indicator">
-          Thinking...
-        </div>
+        <div class="message assistant loading">Thinking...</div>
       {/if}
     </div>
     
-    <div class="input-area">
-      <textarea 
-        bind:value={userInput}
+    <form on:submit|preventDefault={handleSubmit} class="input-form">
+      <input
+        type="text"
+        bind:value={inputMessage}
         placeholder="Type your message..."
-        on:keydown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-          }
-        }}
-      ></textarea>
-      <button on:click={sendMessage} disabled={isLoading}>
+        disabled={isLoading}
+      />
+      <button type="submit" disabled={isLoading || !inputMessage.trim()}>
         Send
       </button>
-    </div>
+    </form>
   </div>
   
   <style>
-    .chat-box {
-      width: 350px;
-      height: 400px;
+    .chat-container {
+      position: absolute;
+      width: 300px;
+      background: white;
       border-radius: 8px;
-      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       display: flex;
       flex-direction: column;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      background: white;
+      height: 400px;
     }
     
     .chat-header {
-      display: flex;
       padding: 10px;
-      background: #4a4a4a;
-      color: white;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
       align-items: center;
     }
     
-    .branch-name-input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      color: white;
-      font-weight: bold;
-      padding: 5px;
+    .parent-info {
+      font-size: 0.8em;
+      color: #666;
     }
     
-    .branch-btn {
-      background: #7289da;
-      border: none;
-      border-radius: 4px;
-      padding: 5px 10px;
-      color: white;
-      cursor: pointer;
-    }
-    
-    .messages-container {
+    .messages {
       flex: 1;
       overflow-y: auto;
       padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
     }
     
     .message {
-      max-width: 80%;
+      margin: 5px 0;
       padding: 8px 12px;
-      border-radius: 16px;
-      margin: 2px 0;
+      border-radius: 8px;
+      max-width: 80%;
     }
     
     .message.user {
-      align-self: flex-end;
-      background: #7289da;
+      background: #007bff;
       color: white;
+      margin-left: auto;
     }
     
     .message.assistant {
-      align-self: flex-start;
       background: #f0f0f0;
-      color: #333;
+      margin-right: auto;
     }
     
-    .message.system {
-      align-self: center;
-      background: #ffcccc;
-      color: #cc0000;
-      font-size: 0.8em;
+    .message.loading {
+      opacity: 0.7;
     }
     
-    .input-area {
+    .input-form {
       display: flex;
       padding: 10px;
-      background: #f0f0f0;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid #eee;
     }
     
-    textarea {
+    input {
       flex: 1;
+      padding: 8px;
       border: 1px solid #ddd;
       border-radius: 4px;
-      padding: 8px;
-      resize: none;
-      height: 40px;
+      margin-right: 8px;
     }
     
     button {
-      margin-left: 8px;
-      background: #7289da;
+      padding: 8px 16px;
+      background: #007bff;
+      color: white;
       border: none;
       border-radius: 4px;
-      color: white;
-      padding: 0 15px;
       cursor: pointer;
     }
     
     button:disabled {
-      background: #a9a9a9;
-    }
-    
-    .loading-indicator {
-      align-self: center;
-      color: #666;
-      font-style: italic;
-      margin: 5px 0;
+      background: #ccc;
+      cursor: not-allowed;
     }
   </style>
